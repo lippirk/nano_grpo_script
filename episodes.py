@@ -89,7 +89,7 @@ def process_training_episodes(
         all_old_logps,
         all_rewards,
         adv_den,
-    ) = ([], [], [], [], [])
+    ) = ([], [], [], [], [], [])
 
     stats = {
         "response_lengths": [],
@@ -227,7 +227,6 @@ def process_training_episodes(
         per_token_rewards = [
             [rew] * len(resp) for rew, resp in zip(rewards, response_token_ids)
         ]
-        breakpoint()
 
         # Extend the lists with the new episode data
         # (Note: this is a flattened list of all the data for all the responses over all groups, hence the .extend())

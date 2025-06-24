@@ -38,10 +38,10 @@ def preprocess_example(
             "role": "user",
             "content": PROMPT_TEMPLATE.format(numbers=numbers, target=target),
         },
-        {"role": "assistant", "content": "Let me solve this step by step.\n<think>"},
+        # {"role": "assistant", "content": "Let me solve this step by step.\n<think>"},
     ]
     input_ids = tokenizer.apply_chat_template(
-        prefix, tokenize=True, continue_final_message=True
+        prefix, tokenize=True, continue_final_message=False, add_generation_prompt=True
     )
     prompt = tokenizer.decode(
         input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False

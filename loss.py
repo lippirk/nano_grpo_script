@@ -69,7 +69,6 @@ def compute_pg_loss(
     }
 
     labels_mask = (labels[..., 1:] != -100).float()  # [batch_size, seq_len-1]
-    breakpoint()
 
     # Compute current log probabilities
     logps = compute_token_log_probs(

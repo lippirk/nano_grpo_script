@@ -26,7 +26,8 @@ def format_reward_func(completion: str, EOS_TOKEN: str) -> float:
 
     try:
         # Synthetically prepend <think> (if your pipeline relies on that to ease matching)
-        completion = "<think>" + completion
+        if not completion.startswith('<think>'):
+            completion = "<think>" + completion
 
         # Strip EOS token if present
         if completion.endswith(EOS_TOKEN):
@@ -37,7 +38,9 @@ def format_reward_func(completion: str, EOS_TOKEN: str) -> float:
         # 1) <think>...contents not including other <think> tags...</think>
         # 2) \n
         # 3) <answer>...anything...</answer>
-        regex = r"^<think>([^<]*(?:<(?!/?think>)[^<]*)*)<\/think>\n<answer>([\s\S]*?)<\/answer>$"
+        # regex = r"^<think>([^<]*(?:<(?!/?think>)[^<]*)*)<\/think>\n<answer>([\s\S]*?)<\/answer>$"
+        # regex = r"<think>([^<]*?)<\/think>[.|\n]*<answer>([^<]*?)<\/answer>"
+        regex = r"<think>(.*?)</think>.*?<answer>(.*?)</answer>"
         match = re.search(regex, completion, re.DOTALL)
 
         if match is None or len(match.groups()) != 2:
@@ -73,18 +76,21 @@ def equation_reward_func(completion: str, nums: List[int], target: int) -> float
     """
     try:
         # add synthetic <think> as its already part of the prompt and prefilled for the assistant to more easily match the regex
-        completion = "<think>" + completion
+        if not completion.startswith('<think>'):
+            completion = "<think>" + completion
         # Check if the format is correct
-        match = re.search(r"<answer>(.*?)<\/answer>", completion)
+        match = re.search(r"<answer>(.*?)<\/answer>", completion, re.DOTALL)
         if match is None:
             return 0.0
+
         # Extract the "answer" part from the completion
         equation = match.group(1).strip()
         # Extract all numbers from the equation
         used_numbers = [int(n) for n in re.findall(r"\d+", equation)]
 
         # Check if all numbers are used exactly once
-        if sorted(used_numbers) != sorted(nums):
+        # if sorted(used_numbers) != sorted(nums):
+        if not set(used_numbers).issubset(set(nums)):
             return 0.0
         # Define a regex pattern that only allows numbers, operators, parentheses, and whitespace
         allowed_pattern = r"^[\d+\-*/().\s]+$"

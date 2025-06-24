@@ -314,6 +314,7 @@ def main():
     }
 
     model_name_short = MODEL_NAME.split("/")[-1]
+    is_qwen3 = "Qwen3" in MODEL_NAME
 
     # Get algorithm name directly from the argument
     algo_map = {
@@ -347,8 +348,10 @@ def main():
 
     SYSTEM_MESSAGE = (
         "You are a helpful assistant. You first think about the reasoning process in the mind "
-        "and then provide the user with the answer."
+        "and then provide the user with the answer. "
     )
+    if is_qwen3:
+        SYSTEM_MESSAGE += " Enable thinking /think."
     PROMPT_TEMPLATE = (
         "Using the numbers {numbers}, create an equation that equals {target}. "
         "You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. "
@@ -419,7 +422,7 @@ def main():
     inference_engine = LLM(
         model=MODEL_NAME,
         skip_tokenizer_init=False,
-        gpu_memory_utilization=0.3,
+        gpu_memory_utilization=0.4,
         enable_prefix_caching=True,
         swap_space=1,
         scheduling_policy="fcfs",
