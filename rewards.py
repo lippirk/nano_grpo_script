@@ -108,6 +108,26 @@ def equation_reward_func(completion: str, nums: List[int], target: int) -> float
         # If evaluation fails, reward is 0
         return 0.0
 
+def reward_for_gsm8k_answer(completion: str, target: int) -> float:
+    try:
+        # add synthetic <think> as its already part of the prompt and prefilled for the assistant to more easily match the regex
+        if not completion.startswith('<think>'):
+            completion = "<think>" + completion
+        # Check if the format is correct
+        match = re.search(r"<answer>(.*?)<\/answer>", completion, re.DOTALL)
+        if match is None:
+            return 0.0
+
+        ## extract integer from the answer tags. it may or may not contain a dollar sign
+        answer = match.group(1).strip()
+        answer = int(answer)
+        if answer == target:
+            return 1.0
+        else:
+            return 0.0
+    except Exception:
+        # If evaluation fails, reward is 0
+        return 0.0
 
 def compute_reward(
     completion: str, sample: Dict[str, Any], EOS_TOKEN: str
@@ -136,6 +156,37 @@ def compute_reward(
     metrics = {
         "format_reward": format_reward,
         "equation_reward": equation_reward,
+    }
+
+    return reward, metrics
+
+def compute_gsm8k_reward(
+    completion: str, sample: Dict[str, Any], EOS_TOKEN: str
+) -> Tuple[float, Dict[str, float]]:
+    """
+    Compute the reward for a given completion.
+
+    Args:
+        completion (str): The completion to evaluate
+        sample (Dict[str, Any]): The sample to evaluate
+        EOS_TOKEN (str): The end of sequence token
+
+    Returns:
+        Tuple[float, Dict[str, float]]: A tuple containing the reward (float) and metrics (dict of partial-rewards)
+    """
+    # nums = sample["nums"]
+    target = sample["target"]
+
+    format_reward = format_reward_func(completion, EOS_TOKEN)
+    gsm8k_reward = reward_for_gsm8k_answer(
+        completion=completion, target=target
+    )
+
+    reward = format_reward + gsm8k_reward
+
+    metrics = {
+        "format_reward": format_reward,
+        "equation_reward": gsm8k_reward,
     }
 
     return reward, metrics

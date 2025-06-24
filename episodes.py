@@ -23,6 +23,7 @@ def process_training_episodes(
     dynamic_sampling=False,  # For DAPO
     algo_config=None,
     token_budget=1024,
+    compute_reward_fn=None
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Process model generations and calculate rewards for training episodes.
@@ -121,7 +122,7 @@ def process_training_episodes(
 
         # Compute the rewards and metrics for each response
         rewards_and_metrics = [
-            compute_reward(resp, sample, EOS_TOKEN) for resp in responses
+            compute_reward_fn(resp, sample, EOS_TOKEN) for resp in responses
         ]
         rewards, reward_metrics = zip(*rewards_and_metrics)
         rewards = np.array(rewards, dtype=np.float32)

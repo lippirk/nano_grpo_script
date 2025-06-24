@@ -78,7 +78,7 @@ def compute_pg_loss(
     if algo_config.get("algo") == "pg":
         rewards = batch["rewards"][..., 1:]
         pg_reward = rewards - 1. # currently reward could be 0, 0.5, 1., 1.5, 2., so this maps to [-1, 1]
-        assert pg_reward.min() >= -1.0 and pg_reward.max() <= 1.0
+        assert pg_reward.min() >= -1.0 and pg_reward.max() <= 1.0, f"pg_reward: {pg_reward.min()}, {pg_reward.max()}. expected [-1, 1]"
 
         policy_loss_per_token = -logps * pg_reward * labels_mask
         policy_loss = policy_loss_per_token.sum() / labels_mask.sum().clamp(min=1.0)

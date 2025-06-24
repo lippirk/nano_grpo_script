@@ -16,18 +16,19 @@ from tqdm import trange
 from transformers import AutoModelForCausalLM, AutoTokenizer, PreTrainedModel
 from vllm import LLM, SamplingParams
 
-from rewards import compute_reward
+from rewards import compute_reward, compute_gsm8k_reward
 from episodes import process_training_episodes, dump_episodes
 from loss import compute_pg_loss
 from utils import (
-    preprocess_example,
+    preprocess_countdown,
+    preprocess_gsm8k,
     find_free_port,
     find_last_checkpoint,
     prepare_model_inputs,
     load_model_into_vllm,
 )
 
-ENABLE_WANDB = False
+ENABLE_WANDB = True
 
 if ENABLE_WANDB:
     import wandb
@@ -118,6 +119,12 @@ def evaluate_on_test_set(
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Train R1 model with PPO")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["gsm8k", "countdown"],
+        default="countdown",
+    )
     parser.add_argument(
         "--algo",
         type=str,
@@ -326,8 +333,7 @@ def main():
     }
     algo_name = algo_map[args.algo]
 
-    # Format run name with algorithm variant
-    RUN_NAME = f"{model_name_short}_{args.algo}_el{args.eps_low}_eh{args.eps_high}_t{TEMPERATURE}_kl{KL_COEFFICIENT}_lr{LEARNING_RATE}"
+    RUN_NAME = f"{model_name_short}_{args.algo}_el{args.eps_low}_eh{args.eps_high}_t{TEMPERATURE}_kl{KL_COEFFICIENT}_lr{LEARNING_RATE}_ds_{args.dataset}"
     if args.algo == "optimal":
         RUN_NAME = f"{model_name_short}_optimal_g{GENERATIONS_PER_SAMPLE}_t{TEMPERATURE}_lr{LEARNING_RATE}"
 
@@ -352,20 +358,39 @@ def main():
     )
     if is_qwen3:
         SYSTEM_MESSAGE += " Enable thinking /think."
-    PROMPT_TEMPLATE = (
-        "Using the numbers {numbers}, create an equation that equals {target}. "
-        "You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. "
-        "Show your work in <think> </think> tags. And return the final equation and answer in "
-        "<answer> </answer> tags, for example <answer>(1 + 2) / (3 * 5)</answer>."
-    )
+
+    if args.dataset == 'countdown':
+        PROMPT_TEMPLATE = (
+            "Using the numbers {numbers}, create an equation that equals {target}. "
+            "You can use basic arithmetic operations (+, -, *, /) and each number can only be used once. "
+            "Show your work in <think> </think> tags. And return the final equation and answer in "
+                "<answer> </answer> tags, for example <answer>(1 + 2) / (3 * 5)</answer>."
+            )
+        compute_reward_fn = compute_reward
+    elif args.dataset == 'gsm8k':
+        PROMPT_TEMPLATE = (
+            "\nInstruction: Answer the question, showing your work in <think> </think> tags. Return the final answer in <answer> </answer> tags. The answer must be an integer, even if it is a dollar amount. For example, <answer>57</answer> is acceptable, but <answer>$57</answer> is not. \n\n"
+            "Question: {question} "
+        )
+        compute_reward_fn = compute_gsm8k_reward
+    else:
+        raise ValueError(f"Invalid dataset: {args.dataset}")
 
     tokenizer = AutoTokenizer.from_pretrained(MODEL_CHAT_NAME)
     EOS_TOKEN_ID = AutoTokenizer.from_pretrained(MODEL_NAME).eos_token_id
     EOS_TOKEN = tokenizer.convert_ids_to_tokens(EOS_TOKEN_ID)
 
-    dataset = load_dataset("Jiayi-Pan/Countdown-Tasks-3to4", split="train")
+    if args.dataset == 'countdown':
+        dataset = load_dataset("Jiayi-Pan/Countdown-Tasks-3to4", split="train")
+        preprocess_fn = preprocess_countdown
+    elif args.dataset == 'gsm8k':
+        def remove_comma(x): return x.replace(",", "")
+        dataset = load_dataset("openai/gsm8k","main", split="train")
+        dataset = dataset.map(lambda x: {"target": int(remove_comma(x["answer"].split("####")[-1]).strip())}, batched=False)
+        preprocess_fn = preprocess_gsm8k
+
     dataset = dataset.map(
-        preprocess_example,
+        preprocess_fn,
         num_proc=6,
         fn_kwargs={
             "tokenizer": tokenizer,
@@ -422,7 +447,7 @@ def main():
     inference_engine = LLM(
         model=MODEL_NAME,
         skip_tokenizer_init=False,
-        gpu_memory_utilization=0.4,
+        gpu_memory_utilization=0.3,
         enable_prefix_caching=True,
         swap_space=1,
         scheduling_policy="fcfs",
@@ -492,7 +517,7 @@ def main():
                     detokenize=False,
                     stop_token_ids=[EOS_TOKEN_ID],
                 ),
-                reward_func=lambda completion, sample: compute_reward(
+                reward_func=lambda completion, sample: compute_reward_fn(
                     completion, sample, EOS_TOKEN
                 ),
             )
@@ -564,6 +589,7 @@ def main():
             dynamic_sampling=args.dyn_sample,
             algo_config=algo_config,  # Pass the algorithm configuration
             token_budget=args.token_budget,  # Pass the token budget parameter
+            compute_reward_fn=compute_reward_fn,
         )
 
         # Safety check for empty batches (shouldn't happen with our fallback)

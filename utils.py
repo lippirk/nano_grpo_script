@@ -11,7 +11,7 @@ from transformers import AutoTokenizer, PreTrainedModel
 from vllm import LLM
 
 
-def preprocess_example(
+def preprocess_countdown(
     example: Dict[str, Any],
     tokenizer: AutoTokenizer,
     SYSTEM_MESSAGE: str,
@@ -47,6 +47,44 @@ def preprocess_example(
         input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
     )
     return {"prompt": prompt, "input_ids": input_ids}
+
+def preprocess_gsm8k(
+    example: Dict[str, Any],
+    tokenizer: AutoTokenizer,
+    SYSTEM_MESSAGE: str,
+    PROMPT_TEMPLATE: str,
+) -> Dict[str, Any]:
+    """
+    Preprocess an example from the dataset to create a prompt/chat template for the model to follow.
+
+    Args:
+        example (Dict[str, Any]): An example from the dataset
+        tokenizer (AutoTokenizer): The tokenizer to use
+        SYSTEM_MESSAGE (str): The system message to use
+        PROMPT_TEMPLATE (str): The prompt template to use
+
+    Returns:
+        Dict[str, Any]: A dictionary containing the prompt and input_ids
+    """
+    target: int = example["target"]
+
+    prefix = [
+        {"role": "system", "content": SYSTEM_MESSAGE},
+        {
+            "role": "user",
+            "content": PROMPT_TEMPLATE.format(question=example['question'], target=target),
+        },
+        # {"role": "assistant", "content": "Let me solve this step by step.\n<think>"},
+    ]
+    input_ids = tokenizer.apply_chat_template(
+        prefix, tokenize=True, continue_final_message=False, add_generation_prompt=True
+    )
+    prompt = tokenizer.decode(
+        input_ids, skip_special_tokens=False, clean_up_tokenization_spaces=False
+    )
+    return {"prompt": prompt, "input_ids": input_ids}
+
+
 
 
 def prepare_model_inputs(
