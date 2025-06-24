@@ -27,15 +27,20 @@ from utils import (
     load_model_into_vllm,
 )
 
-import wandb
+ENABLE_WANDB = False
 
-## CHANGE THESE TO YOUR OWN WANDB ENTITY AND PROJECT
-WANDB_ENTITY = "sam-bowyer-bristol"
-WANDB_PROJECT = "nano-grpo"
+if ENABLE_WANDB:
+    import wandb
+
+    ## CHANGE THESE TO YOUR OWN WANDB ENTITY AND PROJECT
+    WANDB_ENTITY = "sam-bowyer-bristol"
+    WANDB_PROJECT = "nano-grpo"
 
 ## CHANGE THESE PATHS TO YOUR OWN
-SCRATCH = Path("/user/work/dg22309/grpo/nano_script")
-os.environ["HF_HOME"] = str("/user/work/dg22309/huggingface")
+import os
+pwd = os.getcwd()
+assert pwd.endswith("pg/nano_grpo_script"), "Please run this script from the pg/nano_grpo_script directory"
+SCRATCH = Path(pwd)
 
 
 def evaluate_on_test_set(
@@ -63,7 +68,7 @@ def evaluate_on_test_set(
     """
     # Convert token IDs to string prompts that vLLM can process
     prompts = [tokenizer.decode(ids, skip_special_tokens=False) for ids in test_dataset["input_ids"]]
-    
+
     # Use text prompts instead of token IDs
     generations = inference_engine.generate(
         prompts=prompts, sampling_params=eval_sampling_params
@@ -178,7 +183,8 @@ def main():
         "--temperature", type=float, default=1.0, help="Temperature for sampling"
     )
     parser.add_argument(
-        "--model_name", type=str, default="Qwen/Qwen2.5-3B", help="Model name/path"
+        # "--model_name", type=str, default="Qwen/Qwen2.5-3B", help="Model name/path"
+        "--model_name", type=str, default="Qwen/Qwen3-0.6B", help="Model name/path"
     )
     parser.add_argument(
         "--learning_rate", type=float, default=1e-6, help="Learning rate for training"
@@ -237,7 +243,10 @@ def main():
 
     # Model configuration
     MODEL_NAME = args.model_name
-    MODEL_CHAT_NAME = MODEL_NAME + "-Instruct"
+    if "Qwen3" in MODEL_NAME:
+        MODEL_CHAT_NAME = MODEL_NAME
+    else:
+        MODEL_CHAT_NAME = MODEL_NAME + "-Instruct"
 
     # RL parameters
     # Total number of training iterations
@@ -362,13 +371,13 @@ def main():
 
     policy_model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        attn_implementation="flash_attention_2",
+        # attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
         device_map=0,
     )
     reference_model = AutoModelForCausalLM.from_pretrained(
         MODEL_NAME,
-        attn_implementation="flash_attention_2",
+        # attn_implementation="flash_attention_2",
         torch_dtype=torch.bfloat16,
         device_map=0,
     )
@@ -406,11 +415,12 @@ def main():
     )
 
     # Wandb for logging
-    wandb.init(
-        entity=WANDB_ENTITY,
-        project=WANDB_PROJECT,
-        name=RUN_NAME,
-        config={
+    if ENABLE_WANDB:
+        wandb.init(
+            entity=WANDB_ENTITY,
+            project=WANDB_PROJECT,
+            name=RUN_NAME,
+            config={
             "model_name": MODEL_NAME,
             "learning_rate": LEARNING_RATE,
             "num_iterations": NUM_ITERATIONS,
@@ -477,7 +487,8 @@ def main():
                 iteration=iteration,
                 is_eval=True,
             )
-            wandb.log({"eval/episodes": eval_episode_table, "iteration": iteration})
+            if ENABLE_WANDB:
+                wandb.log({"eval/episodes": eval_episode_table, "iteration": iteration})
 
         #########################################################
         # Generate Episodes
@@ -669,7 +680,8 @@ def main():
         }
         if eval_stats is not None:
             logs.update({f"eval/{k}": np.mean(v) for k, v in eval_stats.items()})
-        wandb.log(logs)
+        if ENABLE_WANDB:
+            wandb.log(logs)
 
         selected_keys = [
             "train/kl_penalty",
@@ -695,4 +707,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    

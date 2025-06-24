@@ -96,7 +96,7 @@ def prepare_model_inputs(
     """
     max_seq_len = max(len(q) + len(r) for q, r in zip(query_token_ids, response_token_ids))
     inputs = {"input_ids": [], "attention_mask": [], "labels": [], "advantages": []}
-    
+
     # Add old_logps and adv_den if provided
     if old_logps is not None:
         inputs["old_logps"] = []
@@ -125,7 +125,7 @@ def prepare_model_inputs(
         inputs["attention_mask"].append(attention_mask)
         inputs["labels"].append(labels)
         inputs["advantages"].append(advantages_seq)
-        
+
         # Add old log probs if provided
         if old_logps is not None:
             old_logps_seq = [0.0] * len(query) + old_logps[i] + [0.0] * (max_seq_len - seq_len)
