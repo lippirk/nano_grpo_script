@@ -33,8 +33,8 @@ if ENABLE_WANDB:
     import wandb
 
     ## CHANGE THESE TO YOUR OWN WANDB ENTITY AND PROJECT
-    WANDB_ENTITY = "sam-bowyer-bristol"
-    WANDB_PROJECT = "nano-grpo"
+    WANDB_ENTITY = "ben-anson-university-of-bristol"
+    WANDB_PROJECT = "raat"
 
 ## CHANGE THESE PATHS TO YOUR OWN
 import os
@@ -121,9 +121,9 @@ def main():
     parser.add_argument(
         "--algo",
         type=str,
-        choices=["grpo", "dr_grpo", "dapo", "optimal"],
+        choices=["grpo", "dr_grpo", "dapo", "optimal", "pg"],
         default="dapo",
-        help="Algorithm variant: grpo (original), dr_grpo (unbiased), dapo (state-of-the-art), or optimal (best combined configuration)",
+        help="Algorithm variant: grpo (original), dr_grpo (unbiased), dapo (state-of-the-art), pg (policy-gradient), or optimal (best combined configuration)",
     )
     parser.add_argument(
         "--optimal",
@@ -208,6 +208,18 @@ def main():
             args.token_budget = 1024  # Default token budget for normalization
         if args.group_size is None:
             args.group_size = 16  # Larger group for better statistics
+    elif args.algo == "pg":
+        # Policy Gradient configuration
+        args.norm_adv = "none"
+        args.length_norm = False
+        args.dyn_sample = False
+        args.eps_low = 0.0  # No clipping for PG
+        args.eps_high = 0.0  # No clipping for PG
+        args.kl_coeff = 0.0  # No KL penalty for PG
+        if args.token_budget is None:
+            args.token_budget = 1024
+        if args.group_size is None:
+            args.group_size = 4  # Standard group size
     else:
         # Default configurations for other algorithms
         if args.norm_adv is None:
@@ -229,6 +241,7 @@ def main():
         "length_norm": args.length_norm,
         "token_budget": args.token_budget,
     }
+    algo_config["algo"] = args.algo
 
     # Needed to stop DeepSpeed from complaining
     os.environ["MASTER_ADDR"] = "localhost"
@@ -308,6 +321,7 @@ def main():
         "dr_grpo": "Dr.GRPO",
         "dapo": "DAPO",
         "optimal": "Optimal",
+        "pg": "PG",
     }
     algo_name = algo_map[args.algo]
 
@@ -590,6 +604,7 @@ def main():
             response_token_ids=episodes["all_response_token_ids"],
             advantages=episodes["all_advantages"],
             device="cuda",
+            rewards=episodes.get("all_rewards", None),
             old_logps=episodes.get("all_old_logps", None),
             adv_den=episodes.get("adv_den", None),
         )

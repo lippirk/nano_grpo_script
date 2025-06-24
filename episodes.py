@@ -21,8 +21,8 @@ def process_training_episodes(
     policy_model=None,  # For old_logps calculation
     temperature=1.0,  # For old_logps calculation
     dynamic_sampling=False,  # For DAPO
-    algo_config=None,  
-    token_budget=1024, 
+    algo_config=None,
+    token_budget=1024,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Process model generations and calculate rewards for training episodes.
@@ -32,11 +32,11 @@ def process_training_episodes(
     Args:
         samples (List[Dict[str, Any]]): List of samples (i.e. prompts/questions) from the dataset
         all_generations (List[List[int]]): List of generations for each sample (i.e. responses)
-            - List of token IDs for each generation 
+            - List of token IDs for each generation
             - (i.e. len(all_generations) == len(samples) * GENERATIONS_PER_SAMPLE)
             - (i.e. all_generations[0] is the list of token IDs for the first sample)
             - This list is flattened across samples, but we reform it into groups of GENERATIONS_PER_SAMPLE for each sample at the start of this function
-        all_finish_reasons (List[str]]): List of finish reasons for each generation in all_generations 
+        all_finish_reasons (List[str]]): List of finish reasons for each generation in all_generations
         tokenizer (AutoTokenizer): The tokenizer to use
         EOS_TOKEN_ID (int): The end of sequence token ID
         EOS_TOKEN (str): The end of sequence token
@@ -57,6 +57,7 @@ def process_training_episodes(
                 - "all_query_token_ids" (List[int]): List of token IDs for all queries
                 - "all_response_token_ids" (List[List[int]]): List of token IDs for all responses
                 - "all_advantages" (List[List[float]]): List of advantages for all responses
+                - "all_rewards" (List[List[float]]): List of rewards for all responses
                 - "adv_den" (List[int]): List of advantage denominators for all responses
                 - "all_old_logps" (List[List[float]]): List of old log probabilities for all responses
                 - "empty_batch" (bool): Whether the batch is empty
@@ -86,6 +87,7 @@ def process_training_episodes(
         all_responses_token_ids,
         all_advantages,
         all_old_logps,
+        all_rewards,
         adv_den,
     ) = ([], [], [], [], [])
 
@@ -177,7 +179,7 @@ def process_training_episodes(
         old_logps_group = []
         if policy_model is not None:
             for i, response in enumerate(response_token_ids):
-                # each iteration here is a single response 
+                # each iteration here is a single response
                 # (i.e. a single generation out of GENERATIONS_PER_SAMPLE many)
 
                 # Get the query token IDs for the sample
@@ -222,12 +224,17 @@ def process_training_episodes(
         per_token_advantages = [
             [adv] * len(resp) for adv, resp in zip(advantages, response_token_ids)
         ]
+        per_token_rewards = [
+            [rew] * len(resp) for rew, resp in zip(rewards, response_token_ids)
+        ]
+        breakpoint()
 
         # Extend the lists with the new episode data
         # (Note: this is a flattened list of all the data for all the responses over all groups, hence the .extend())
         all_query_token_ids.extend([sample["input_ids"]] * len(response_token_ids))
         all_responses_token_ids.extend(response_token_ids)
         all_advantages.extend(per_token_advantages)
+        all_rewards.extend(per_token_rewards)
         if policy_model is not None:
             all_old_logps.extend(old_logps_group)
 
@@ -254,6 +261,7 @@ def process_training_episodes(
         "all_query_token_ids": all_query_token_ids,
         "all_response_token_ids": all_responses_token_ids,
         "all_advantages": all_advantages,
+        "all_rewards": all_rewards,
         "adv_den": adv_den,
     }
 
@@ -274,6 +282,7 @@ def process_training_episodes(
             "all_query_token_ids": [],
             "all_response_token_ids": [],
             "all_advantages": [],
+            "all_rewards": [],
             "adv_den": [],
             "empty_batch": True,
         }
@@ -361,7 +370,7 @@ def dump_episodes(
 
     # Convert rewards to Python floats for JSON serialization
     python_rewards = [numpy_to_python(r) for r in rewards]
-    
+
     with open(episodes_dir / f"eps_{iteration:06d}.json", "w") as f:
         json.dump(
             [

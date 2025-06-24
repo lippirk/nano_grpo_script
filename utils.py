@@ -54,6 +54,7 @@ def prepare_model_inputs(
     response_token_ids: List[List[int]],
     advantages: List[List[float]],
     device: torch.device,
+    rewards: Optional[List[List[float]]] = None,
     old_logps: Optional[List[List[float]]] = None,  # Added old_logps parameter
     adv_den: Optional[List[int]] = None,  # Added adv_den parameter
 ) -> Dict[str, torch.Tensor]:
@@ -64,6 +65,7 @@ def prepare_model_inputs(
         response_token_ids: List of response token ids
         advantages: List of lists of advantage values, matching response_token_ids structure
         device: Device to move the tensors to
+        rewards: Optional list of raw reward values for policy gradient
         old_logps: Optional list of old log probabilities for importance sampling
         adv_den: Optional list of denominators for advantage normalization
     Returns:
@@ -97,6 +99,8 @@ def prepare_model_inputs(
     max_seq_len = max(len(q) + len(r) for q, r in zip(query_token_ids, response_token_ids))
     inputs = {"input_ids": [], "attention_mask": [], "labels": [], "advantages": []}
 
+    if rewards is not None:
+        inputs["rewards"] = []
     # Add old_logps and adv_den if provided
     if old_logps is not None:
         inputs["old_logps"] = []
@@ -126,6 +130,11 @@ def prepare_model_inputs(
         inputs["labels"].append(labels)
         inputs["advantages"].append(advantages_seq)
 
+        if rewards is not None:
+            rewards_seq = [0.0] * len(query) + rewards[i] + [0.0] * (max_seq_len - seq_len)
+            assert len(rewards_seq) == max_seq_len
+            inputs["rewards"].append(rewards_seq)
+
         # Add old log probs if provided
         if old_logps is not None:
             old_logps_seq = [0.0] * len(query) + old_logps[i] + [0.0] * (max_seq_len - seq_len)
@@ -134,7 +143,7 @@ def prepare_model_inputs(
 
     # Convert to tensors
     return {
-        k: (torch.tensor(v, dtype=torch.long if k not in ["advantages", "old_logps"] else torch.float, device=device)
+        k: (torch.tensor(v, dtype=torch.long if k not in ["advantages", "old_logps", "rewards"] else torch.float, device=device)
             if k != "adv_den" else torch.tensor(v, dtype=torch.int64, device=device))
         for k, v in inputs.items()
     }

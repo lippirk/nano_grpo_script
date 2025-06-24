@@ -14,7 +14,7 @@ def compute_pg_loss(
     total_response_len: int,
     TEMPERATURE: float,
     KL_COEFFICIENT: float,
-    algo_config: Dict[str, Any] = None, 
+    algo_config: Dict[str, Any] = None,
 ) -> Tuple[torch.Tensor, Dict[str, float]]:
     """
     Compute the policy gradient loss with KL penalty between policy and reference models.
@@ -26,7 +26,6 @@ def compute_pg_loss(
     3. Implements clipping with configurable low/high bounds
     4. Optionally adds KL divergence penalty
     5. Supports various normalization schemes for advantages and length
-
     Args:
         policy_model: The model being trained
         reference_model: The reference model for KL penalty calculation
@@ -70,17 +69,39 @@ def compute_pg_loss(
     }
 
     labels_mask = (labels[..., 1:] != -100).float()  # [batch_size, seq_len-1]
+    breakpoint()
+
+    # Compute current log probabilities
+    logps = compute_token_log_probs(
+        policy_model, model_inputs, TEMPERATURE
+    )  # [batch_size, seq_len-1]
+
+    if algo_config.get("algo") == "pg":
+        rewards = batch["rewards"][..., 1:]
+        pg_reward = rewards - 1. # currently reward could be 0, 0.5, 1., 1.5, 2., so this maps to [-1, 1]
+        assert pg_reward.min() >= -1.0 and pg_reward.max() <= 1.0
+
+        policy_loss_per_token = -logps * pg_reward * labels_mask
+        policy_loss = policy_loss_per_token.sum() / labels_mask.sum().clamp(min=1.0)
+
+        loss = policy_loss
+        entropy = -logps.sum() / labels_mask.sum()
+
+        metrics = {
+            "policy_loss": policy_loss.item(),
+            "entropy": entropy.item(),
+            "kl_penalty": 0.0,
+            "clip_ratio/low_rate": 0.0,
+            "clip_ratio/high_rate": 0.0,
+            "clip_ratio/region_rate": 0.0,
+        }
+        return loss, metrics
 
     # Compute reference log probabilities for KL penalty
     with torch.no_grad():
         ref_logps = compute_token_log_probs(
             reference_model, model_inputs, TEMPERATURE
         )  # [batch_size, seq_len-1]
-
-    # Compute current log probabilities
-    logps = compute_token_log_probs(
-        policy_model, model_inputs, TEMPERATURE
-    )  # [batch_size, seq_len-1]
 
     # Compute importance sampling ratio (if old_logps are available)
     if "old_logps" in batch:
